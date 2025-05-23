@@ -12,8 +12,8 @@ public class BooksLibraryApp {
 
     // Значения по умолчанию для не ключевых полей
     private static final int DEFAULT_FLOOR = 1;
-    private static final String DEFAULT_CABINET = "Шкаф 0";
-    private static final String DEFAULT_SHELF = "Полка 0";
+    private static final int DEFAULT_CABINET = 0;
+    private static final int DEFAULT_SHELF = 0;
     private static final String DEFAULT_AUTHOR = "Неизвестный автор";
     private static final String DEFAULT_TITLE = "Без названия";
     private static final String DEFAULT_PUBLISHER = "Неизвестное издательство";
@@ -26,10 +26,6 @@ public class BooksLibraryApp {
         try {
             conn = DriverManager.getConnection(DB_URL);
             System.out.println("Подключение к базе данных успешно установлено.");
-
-
-            System.out.println("Кодировка JVM: " + System.getProperty("file.encoding"));
-            System.out.println("Кодировка консоли: " + System.console() != null ? System.console().charset() : "unknown");
 
             boolean exit = false;
             while (!exit) {
@@ -121,17 +117,17 @@ public class BooksLibraryApp {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT * FROM Shelves")) {
 
-            System.out.printf("%-5s %-10s %-20s %-20s%n",
+            System.out.printf("%-5s %-10s %-10s %-10s%n",
                     "№", "Этаж", "Шкаф", "Полка");
-            System.out.println("--------------------------------------------");
+            System.out.println("------------------------------------");
 
             int counter = 1;
             while (rs.next()) {
-                System.out.printf("%-5d %-10d %-20s %-20s%n",
+                System.out.printf("%-5d %-10d %-10d %-10d%n",
                         counter++,
                         rs.getInt("floor"),
-                        rs.getString("cabinet"),
-                        rs.getString("shelf"));
+                        rs.getInt("cabinet"),
+                        rs.getInt("shelf"));
             }
         }
     }
@@ -143,13 +139,13 @@ public class BooksLibraryApp {
              ResultSet rs = stmt.executeQuery("SELECT b.*, s.floor, s.cabinet, s.shelf " +
                      "FROM Books b JOIN Shelves s ON b.shelf_id = s.shelf_id")) {
 
-            System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s%n",
-                    "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж");
+            System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s %-10s %-10s%n",
+                    "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж", "Шкаф", "Полка");
             System.out.println("---------------------------------------------------------------------------------------------");
 
             int counter = 1;
             while (rs.next()) {
-                System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d%n",
+                System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d %-10d %-10d%n",
                         counter++,
                         rs.getString("author"),
                         rs.getString("title"),
@@ -158,7 +154,9 @@ public class BooksLibraryApp {
                         rs.getInt("page_count"),
                         rs.getInt("writing_year"),
                         rs.getInt("weight_grams"),
-                        rs.getInt("floor"));
+                        rs.getInt("floor"),
+                        rs.getInt("cabinet"),
+                        rs.getInt("shelf"));
             }
         }
     }
@@ -170,22 +168,65 @@ public class BooksLibraryApp {
         int floor;
         try {
             floor = scanner.nextInt();
+            if (floor < 0) {
+                System.out.println("Ошибка: этаж не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: этаж должен быть числом.");
             scanner.nextLine();
             return;
         }
+
+        System.out.print("Шкаф (номер): ");
+        int cabinet;
+        try {
+            cabinet = scanner.nextInt();
+            if (cabinet < 0) {
+                System.out.println("Ошибка: номер шкафа не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
+        } catch (InputMismatchException e) {
+            System.out.println("Ошибка: номер шкафа должен быть числом.");
+            scanner.nextLine();
+            return;
+        }
+
+        System.out.print("Полка (номер): ");
+        int shelf;
+        try {
+            shelf = scanner.nextInt();
+            if (shelf < 0) {
+                System.out.println("Ошибка: номер полки не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
+        } catch (InputMismatchException e) {
+            System.out.println("Ошибка: номер полки должен быть числом.");
+            scanner.nextLine();
+            return;
+        }
         scanner.nextLine();
-        System.out.print("Шкаф: ");
-        String cabinet = scanner.nextLine();
-        System.out.print("Полка: ");
-        String shelf = scanner.nextLine();
+
+        // Проверка на существование комбинации cabinet и shelf
+        String checkSql = "SELECT COUNT(*) FROM Shelves WHERE cabinet = ? AND shelf = ?";
+        try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+            checkStmt.setInt(1, cabinet);
+            checkStmt.setInt(2, shelf);
+            ResultSet rs = checkStmt.executeQuery();
+            if (rs.next() && rs.getInt(1) > 0) {
+                System.out.println("Ошибка: полка " + shelf + " в шкафу " + cabinet + " уже существует.");
+                return;
+            }
+        }
 
         String sql = "INSERT INTO Shelves (floor, cabinet, shelf) VALUES (?, ?, ?)";
         try (PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             pstmt.setInt(1, floor);
-            pstmt.setString(2, cabinet);
-            pstmt.setString(3, shelf);
+            pstmt.setInt(2, cabinet);
+            pstmt.setInt(3, shelf);
             int rowsAffected = pstmt.executeUpdate();
             if (rowsAffected > 0) {
                 try (ResultSet generatedKeys = pstmt.getGeneratedKeys()) {
@@ -196,6 +237,13 @@ public class BooksLibraryApp {
             } else {
                 System.out.println("Не удалось добавить полку.");
             }
+        } catch (SQLException e) {
+            if (e.getSQLState().equals("23505")) {
+                System.out.println("Ошибка: полка " + shelf + " в шкафу " + cabinet + " уже существует.");
+            } else {
+                System.err.println("Ошибка при добавлении полки: " + e.getMessage());
+                throw e;
+            }
         }
     }
 
@@ -204,7 +252,6 @@ public class BooksLibraryApp {
         System.out.println("\nДобавление новой книги:");
         System.out.print("Автор: ");
         String author = scanner.nextLine();
-        System.out.print(author);
         System.out.print("Название: ");
         String title = scanner.nextLine();
         System.out.print("Издательство: ");
@@ -213,6 +260,11 @@ public class BooksLibraryApp {
         int publicationYear;
         try {
             publicationYear = scanner.nextInt();
+            if (publicationYear < 0) {
+                System.out.println("Ошибка: год издания не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: год издания должен быть числом.");
             scanner.nextLine();
@@ -222,6 +274,11 @@ public class BooksLibraryApp {
         int pageCount;
         try {
             pageCount = scanner.nextInt();
+            if (pageCount < 0) {
+                System.out.println("Ошибка: количество страниц не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: количество страниц должно быть числом.");
             scanner.nextLine();
@@ -231,6 +288,11 @@ public class BooksLibraryApp {
         int writingYear;
         try {
             writingYear = scanner.nextInt();
+            if (writingYear < 0) {
+                System.out.println("Ошибка: год написания не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: год написания должен быть числом.");
             scanner.nextLine();
@@ -240,6 +302,11 @@ public class BooksLibraryApp {
         int weightGrams;
         try {
             weightGrams = scanner.nextInt();
+            if (weightGrams < 0) {
+                System.out.println("Ошибка: вес не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: вес должен быть числом.");
             scanner.nextLine();
@@ -282,20 +349,20 @@ public class BooksLibraryApp {
     private static int selectShelf() throws SQLException {
         System.out.println("\nСписок полок:");
         try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT * FROM Shelves ORDER BY floor, cabinet")) {
+             ResultSet rs = stmt.executeQuery("SELECT * FROM Shelves ORDER BY floor, cabinet, shelf")) {
 
-            System.out.printf("%-5s %-10s %-20s %-20s%n",
+            System.out.printf("%-5s %-10s %-10s %-10s%n",
                     "ID", "Этаж", "Шкаф", "Полка");
-            System.out.println("--------------------------------------------");
+            System.out.println("------------------------------------");
 
             List<Integer> shelfIds = new ArrayList<>();
             while (rs.next()) {
                 shelfIds.add(rs.getInt("shelf_id"));
-                System.out.printf("%-5d %-10d %-20s %-20s%n",
+                System.out.printf("%-5d %-10d %-10d %-10d%n",
                         rs.getInt("shelf_id"),
                         rs.getInt("floor"),
-                        rs.getString("cabinet"),
-                        rs.getString("shelf"));
+                        rs.getInt("cabinet"),
+                        rs.getInt("shelf"));
             }
 
             if (shelfIds.isEmpty()) {
@@ -328,18 +395,18 @@ public class BooksLibraryApp {
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery("SELECT * FROM Shelves")) {
 
-                System.out.printf("%-5s %-10s %-20s %-20s%n",
+                System.out.printf("%-5s %-10s %-10s %-10s%n",
                         "№", "Этаж", "Шкаф", "Полка");
-                System.out.println("--------------------------------------------");
+                System.out.println("------------------------------------");
 
                 int counter = 1;
                 while (rs.next()) {
                     shelfIds.add(rs.getInt("shelf_id"));
-                    System.out.printf("%-5d %-10d %-20s %-20s%n",
+                    System.out.printf("%-5d %-10d %-10d %-10d%n",
                             counter++,
                             rs.getInt("floor"),
-                            rs.getString("cabinet"),
-                            rs.getString("shelf"));
+                            rs.getInt("cabinet"),
+                            rs.getInt("shelf"));
                 }
             }
 
@@ -369,23 +436,75 @@ public class BooksLibraryApp {
 
             int shelfId = shelfIds.get(listNumber - 1);
 
-            System.out.print("Новый этаж (введите 0, чтобы не менять): ");
+            System.out.print("Новый этаж (введите -1, чтобы не менять): ");
             int floor;
             try {
                 floor = scanner.nextInt();
+                if (floor < -1) {
+                    System.out.println("Ошибка: этаж не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
             } catch (InputMismatchException e) {
                 System.out.println("Ошибка: этаж должен быть числом.");
                 scanner.nextLine();
                 conn.rollback();
                 return;
             }
-            scanner.nextLine();
-            System.out.print("Новый шкаф (оставьте пустым, чтобы не менять): ");
-            String cabinet = scanner.nextLine();
-            System.out.print("Новая полка (оставьте пустым, чтобы не менять): ");
-            String shelf = scanner.nextLine();
 
-            boolean hasUpdates = floor != 0 || !cabinet.isEmpty() || !shelf.isEmpty();
+            System.out.print("Новый шкаф (введите -1, чтобы не менять): ");
+            int cabinet;
+            try {
+                cabinet = scanner.nextInt();
+                if (cabinet < -1) {
+                    System.out.println("Ошибка: номер шкафа не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
+            } catch (InputMismatchException e) {
+                System.out.println("Ошибка: номер шкафа должен быть числом.");
+                scanner.nextLine();
+                conn.rollback();
+                return;
+            }
+
+            System.out.print("Новая полка (введите -1, чтобы не менять): ");
+            int shelf;
+            try {
+                shelf = scanner.nextInt();
+                if (shelf < -1) {
+                    System.out.println("Ошибка: номер полки не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
+            } catch (InputMismatchException e) {
+                System.out.println("Ошибка: номер полки должен быть числом.");
+                scanner.nextLine();
+                conn.rollback();
+                return;
+            }
+            scanner.nextLine();
+
+            // Проверка на существование комбинации cabinet и shelf
+            if (cabinet != -1 && shelf != -1) {
+                String checkSql = "SELECT COUNT(*) FROM Shelves WHERE cabinet = ? AND shelf = ? AND shelf_id != ?";
+                try (PreparedStatement checkStmt = conn.prepareStatement(checkSql)) {
+                    checkStmt.setInt(1, cabinet);
+                    checkStmt.setInt(2, shelf);
+                    checkStmt.setInt(3, shelfId);
+                    ResultSet rs = checkStmt.executeQuery();
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        System.out.println("Ошибка: полка " + shelf + " в шкафу " + cabinet + " уже существует.");
+                        conn.rollback();
+                        return;
+                    }
+                }
+            }
+
+            boolean hasUpdates = floor != -1 || cabinet != -1 || shelf != -1;
             if (!hasUpdates) {
                 System.out.println("Не указано ни одного поля для обновления.");
                 conn.rollback();
@@ -395,15 +514,15 @@ public class BooksLibraryApp {
             StringBuilder sql = new StringBuilder("UPDATE Shelves SET ");
             List<Object> params = new ArrayList<>();
 
-            if (floor != 0) {
+            if (floor != -1) {
                 sql.append("floor = ?, ");
                 params.add(floor);
             }
-            if (!cabinet.isEmpty()) {
+            if (cabinet != -1) {
                 sql.append("cabinet = ?, ");
                 params.add(cabinet);
             }
-            if (!shelf.isEmpty()) {
+            if (shelf != -1) {
                 sql.append("shelf = ?, ");
                 params.add(shelf);
             }
@@ -414,12 +533,7 @@ public class BooksLibraryApp {
 
             try (PreparedStatement pstmt = conn.prepareStatement(sql.toString())) {
                 for (int i = 0; i < params.size(); i++) {
-                    Object param = params.get(i);
-                    if (param instanceof String) {
-                        pstmt.setString(i + 1, (String) param);
-                    } else if (param instanceof Integer) {
-                        pstmt.setInt(i + 1, (Integer) param);
-                    }
+                    pstmt.setInt(i + 1, (Integer) params.get(i));
                 }
 
                 int rowsAffected = pstmt.executeUpdate();
@@ -430,11 +544,16 @@ public class BooksLibraryApp {
                     System.out.println("Полка не найдена.");
                     conn.rollback();
                 }
+            } catch (SQLException e) {
+                if (e.getSQLState().equals("23505")) {
+                    System.out.println("Ошибка: полка " + shelf + " в шкафу " + cabinet + " уже существует.");
+                    conn.rollback();
+                } else {
+                    System.err.println("Ошибка при обновлении полки: " + e.getMessage());
+                    conn.rollback();
+                    throw e;
+                }
             }
-        } catch (SQLException e) {
-            conn.rollback();
-            System.err.println("Ошибка при обновлении полки: " + e.getMessage());
-            throw e;
         } finally {
             conn.setAutoCommit(true);
         }
@@ -450,14 +569,14 @@ public class BooksLibraryApp {
                  ResultSet rs = stmt.executeQuery("SELECT b.*, s.floor, s.cabinet, s.shelf " +
                          "FROM Books b JOIN Shelves s ON b.shelf_id = s.shelf_id")) {
 
-                System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s%n",
-                        "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж");
+                System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s %-10s %-10s%n",
+                        "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж", "Шкаф", "Полка");
                 System.out.println("---------------------------------------------------------------------------------------------");
 
                 int counter = 1;
                 while (rs.next()) {
                     bookIds.add(rs.getInt("book_id"));
-                    System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d%n",
+                    System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d %-10d %-10d%n",
                             counter++,
                             rs.getString("author"),
                             rs.getString("title"),
@@ -466,7 +585,9 @@ public class BooksLibraryApp {
                             rs.getInt("page_count"),
                             rs.getInt("writing_year"),
                             rs.getInt("weight_grams"),
-                            rs.getInt("floor"));
+                            rs.getInt("floor"),
+                            rs.getInt("cabinet"),
+                            rs.getInt("shelf"));
                 }
             }
 
@@ -502,40 +623,64 @@ public class BooksLibraryApp {
             String title = scanner.nextLine();
             System.out.print("Новое издательство (оставьте пустым, чтобы не менять): ");
             String publisher = scanner.nextLine();
-            System.out.print("Новый год издания (введите 0, чтобы не менять): ");
+            System.out.print("Новый год издания (введите -1, чтобы не менять): ");
             int publicationYear;
             try {
                 publicationYear = scanner.nextInt();
+                if (publicationYear < -1) {
+                    System.out.println("Ошибка: год издания не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
             } catch (InputMismatchException e) {
                 System.out.println("Ошибка: год издания должен быть числом.");
                 scanner.nextLine();
                 conn.rollback();
                 return;
             }
-            System.out.print("Новое количество страниц (введите 0, чтобы не менять): ");
+            System.out.print("Новое количество страниц (введите -1, чтобы не менять): ");
             int pageCount;
             try {
                 pageCount = scanner.nextInt();
+                if (pageCount < -1) {
+                    System.out.println("Ошибка: количество страниц не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
             } catch (InputMismatchException e) {
                 System.out.println("Ошибка: количество страниц должно быть числом.");
                 scanner.nextLine();
                 conn.rollback();
                 return;
             }
-            System.out.print("Новый год написания (введите 0, чтобы не менять): ");
+            System.out.print("Новый год написания (введите -1, чтобы не менять): ");
             int writingYear;
             try {
                 writingYear = scanner.nextInt();
+                if (writingYear < -1) {
+                    System.out.println("Ошибка: год написания не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
             } catch (InputMismatchException e) {
                 System.out.println("Ошибка: год написания должен быть числом.");
                 scanner.nextLine();
                 conn.rollback();
                 return;
             }
-            System.out.print("Новый вес (граммы, введите 0, чтобы не менять): ");
+            System.out.print("Новый вес (граммы, введите -1, чтобы не менять): ");
             int weightGrams;
             try {
                 weightGrams = scanner.nextInt();
+                if (weightGrams < -1) {
+                    System.out.println("Ошибка: вес не может быть меньше -1.");
+                    scanner.nextLine();
+                    conn.rollback();
+                    return;
+                }
             } catch (InputMismatchException e) {
                 System.out.println("Ошибка: вес должен быть числом.");
                 scanner.nextLine();
@@ -572,7 +717,7 @@ public class BooksLibraryApp {
             }
 
             boolean hasUpdates = !author.isEmpty() || !title.isEmpty() || !publisher.isEmpty() ||
-                    publicationYear != 0 || pageCount != 0 || writingYear != 0 || weightGrams != 0 || newShelfId != null;
+                    publicationYear != -1 || pageCount != -1 || writingYear != -1 || weightGrams != -1 || newShelfId != null;
 
             if (!hasUpdates) {
                 System.out.println("Не указано ни одного поля для обновления.");
@@ -595,19 +740,19 @@ public class BooksLibraryApp {
                 sql.append("publisher = ?, ");
                 params.add(publisher);
             }
-            if (publicationYear != 0) {
+            if (publicationYear != -1) {
                 sql.append("publication_year = ?, ");
                 params.add(publicationYear);
             }
-            if (pageCount != 0) {
+            if (pageCount != -1) {
                 sql.append("page_count = ?, ");
                 params.add(pageCount);
             }
-            if (writingYear != 0) {
+            if (writingYear != -1) {
                 sql.append("writing_year = ?, ");
                 params.add(writingYear);
             }
-            if (weightGrams != 0) {
+            if (weightGrams != -1) {
                 sql.append("weight_grams = ?, ");
                 params.add(weightGrams);
             }
@@ -655,18 +800,18 @@ public class BooksLibraryApp {
         try (Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT * FROM Shelves")) {
 
-            System.out.printf("%-5s %-10s %-20s %-20s%n",
+            System.out.printf("%-5s %-10s %-10s %-10s%n",
                     "№", "Этаж", "Шкаф", "Полка");
-            System.out.println("--------------------------------------------");
+            System.out.println("------------------------------------");
 
             int counter = 1;
             while (rs.next()) {
                 shelfIds.add(rs.getInt("shelf_id"));
-                System.out.printf("%-5d %-10d %-20s %-20s%n",
+                System.out.printf("%-5d %-10d %-10d %-10d%n",
                         counter++,
                         rs.getInt("floor"),
-                        rs.getString("cabinet"),
-                        rs.getString("shelf"));
+                        rs.getInt("cabinet"),
+                        rs.getInt("shelf"));
             }
         }
 
@@ -726,14 +871,14 @@ public class BooksLibraryApp {
              ResultSet rs = stmt.executeQuery("SELECT b.*, s.floor, s.cabinet, s.shelf " +
                      "FROM Books b JOIN Shelves s ON b.shelf_id = s.shelf_id")) {
 
-            System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s%n",
-                    "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж");
+            System.out.printf("%-5s %-30s %-40s %-20s %-10s %-10s %-10s %-10s %-10s %-10s %-10s%n",
+                    "№", "Автор", "Название", "Издательство", "Год изд.", "Страниц", "Год напис.", "Вес (г)", "Этаж", "Шкаф", "Полка");
             System.out.println("---------------------------------------------------------------------------------------------");
 
             int counter = 1;
             while (rs.next()) {
                 bookIds.add(rs.getInt("book_id"));
-                System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d%n",
+                System.out.printf("%-5d %-30s %-40s %-20s %-10d %-10d %-10d %-10d %-10d %-10d %-10d%n",
                         counter++,
                         rs.getString("author"),
                         rs.getString("title"),
@@ -742,7 +887,9 @@ public class BooksLibraryApp {
                         rs.getInt("page_count"),
                         rs.getInt("writing_year"),
                         rs.getInt("weight_grams"),
-                        rs.getInt("floor"));
+                        rs.getInt("floor"),
+                        rs.getInt("cabinet"),
+                        rs.getInt("shelf"));
             }
         }
 
@@ -798,13 +945,13 @@ public class BooksLibraryApp {
     private static void printCabinets() throws SQLException {
         System.out.println("\nШкафы в лексикографическом порядке:");
         try (Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT cabinet FROM Shelves ORDER BY cabinet ASC")) {
+             ResultSet rs = stmt.executeQuery("SELECT DISTINCT cabinet FROM Shelves ORDER BY cabinet ASC")) {
 
-            System.out.printf("%-20s%n", "Шкаф");
-            System.out.println("--------------------");
+            System.out.printf("%-10s%n", "Шкаф");
+            System.out.println("----------");
 
             while (rs.next()) {
-                System.out.printf("%-20s%n", rs.getString("cabinet"));
+                System.out.printf("%-10d%n", rs.getInt("cabinet"));
             }
         }
     }
@@ -815,6 +962,11 @@ public class BooksLibraryApp {
         int floor;
         try {
             floor = scanner.nextInt();
+            if (floor < 0) {
+                System.out.println("Ошибка: этаж не может быть отрицательным.");
+                scanner.nextLine();
+                return;
+            }
         } catch (InputMismatchException e) {
             System.out.println("Ошибка: этаж должен быть числом.");
             scanner.nextLine();
@@ -882,8 +1034,8 @@ public class BooksLibraryApp {
             String sql1 = "UPDATE Shelves SET floor = ?, cabinet = ?, shelf = ?";
             try (PreparedStatement pstmt1 = conn.prepareStatement(sql1)) {
                 pstmt1.setInt(1, DEFAULT_FLOOR);
-                pstmt1.setString(2, DEFAULT_CABINET);
-                pstmt1.setString(3, DEFAULT_SHELF);
+                pstmt1.setInt(2, DEFAULT_CABINET);
+                pstmt1.setInt(3, DEFAULT_SHELF);
                 int rowsAffected = pstmt1.executeUpdate();
                 System.out.println("Обновлено " + rowsAffected + " записей в таблице полок.");
             }
